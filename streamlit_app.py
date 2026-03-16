@@ -31,13 +31,36 @@ Payoff Matrix (Player 1, Player 2):
 """)
 
 # Firebase credentials and config
-firebase_key = st.secrets["firebase_key"]
+#firebase_key = st.secrets["firebase_key"]
+#database_url = st.secrets["database_url"]
+
+#if not firebase_admin._apps:
+    #cred = credentials.Certificate(json.loads(firebase_key))
+    #firebase_admin.initialize_app(cred, {
+        #'databaseURL': database_url
+    #})
+
+# Build the Firebase service account dict directly from TOML secrets
+service_account = {
+    "type": st.secrets["type"],
+    "project_id": st.secrets["project_id"],
+    "private_key_id": st.secrets["private_key_id"],
+    "private_key": st.secrets["private_key"],
+    "client_email": st.secrets["client_email"],
+    "client_id": st.secrets["client_id"],
+    "auth_uri": st.secrets["auth_uri"],
+    "token_uri": st.secrets["token_uri"],
+    "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+    "client_x509_cert_url": st.secrets["client_x509_cert_url"],
+    "universe_domain": st.secrets["universe_domain"],
+}
+
 database_url = st.secrets["database_url"]
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate(json.loads(firebase_key))
+    cred = credentials.Certificate(service_account)
     firebase_admin.initialize_app(cred, {
-        'databaseURL': database_url
+        "databaseURL": database_url
     })
 
 # BEGIN PDF
