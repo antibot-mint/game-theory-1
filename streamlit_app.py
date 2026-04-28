@@ -393,7 +393,7 @@ if name:
             st.balloons()
             # Reveal partner name only at the end
             partner_name = period1_data["Player 2"]["player"] if role == "Player 1" else period1_data["Player 1"]["player"]
-            st.success(f"✅ Game complete! You were paired with **{partner_name}**. Thank you for playing!")
+            st.success(f"✅ Game complete!**. Thank you for playing!")
             st.session_state["game_done"] = True
         else:
             existing = game_ref_period2.child(role).get()
