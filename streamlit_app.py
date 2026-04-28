@@ -63,107 +63,90 @@ def create_comprehensive_pdf():
     styles = getSampleStyleSheet()
     story = []
     
-    # Title
     title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontSize=24, textColor=colors.darkblue, spaceAfter=30)
     story.append(Paragraph("🎲 Dynamic Game Complete Results", title_style))
     story.append(Spacer(1, 20))
     
     all_games = db.reference("games").get() or {}
     expected_players = db.reference("expected_players").get() or 0
+    all_matches = db.reference("matches").get() or {}
     
     story.append(Paragraph(f"<b>Game Summary</b>", styles['Heading2']))
     story.append(Paragraph(f"Expected Players: {expected_players}", styles['Normal']))
-    story.append(Paragraph(f"Total Matches: {len(all_games)}", styles['Normal']))
+    story.append(Paragraph(f"Total Matches: {len(all_matches)}", styles['Normal']))
     story.append(Spacer(1, 20))
     
     story.append(Paragraph("<b>Individual Match Results</b>", styles['Heading2']))
-    table_data = [["Match ID", "Period 1", "Period 1 Payoffs", "Period 2", "Period 2 Payoffs"]]
+    table_data = [["Match ID", "Player 1", "Player 2", "Period 1", "Period 1 Payoffs", "Period 2", "Period 2 Payoffs"]]
     payoff_matrix = {
         "A": {"X": (4, 3), "Y": (0, 0), "Z": (1, 4)},
         "B": {"X": (0, 0), "Y": (2, 1), "Z": (0, 0)}
     }
-    for match_id, game_data in all_games.items():
-        if "period1" in game_data and "period2" in game_data:
-            p1_action1 = game_data["period1"].get("Player 1", {}).get("action", "N/A")
-            p2_action1 = game_data["period1"].get("Player 2", {}).get("action", "N/A")
-            if p1_action1 != "N/A" and p2_action1 != "N/A":
-                payoff1 = payoff_matrix[p1_action1][p2_action1]
-            else:
-                payoff1 = "N/A"
-            p1_action2 = game_data["period2"].get("Player 1", {}).get("action", "N/A")
-            p2_action2 = game_data["period2"].get("Player 2", {}).get("action", "N/A")
-            if p1_action2 != "N/A" and p2_action2 != "N/A":
-                payoff2 = payoff_matrix[p1_action2][p2_action2]
-            else:
-                payoff2 = "N/A"
-            table_data.append([match_id, f"P1:{p1_action1}, P2:{p2_action1}", str(payoff1), f"P1:{p1_action2}, P2:{p2_action2}", str(payoff2)])
+    for match_id, match_data in all_matches.items():
+        players = match_data.get("players", [])
+        if len(players) < 2: continue
+        p1_name, p2_name = players[0], players[1]
+        game_data = all_games.get(match_id, {})
+        period1 = game_data.get("period1", {})
+        period2 = game_data.get("period2", {})
+        p1_a1 = period1.get("Player 1", {}).get("action", "N/A")
+        p2_a1 = period1.get("Player 2", {}).get("action", "N/A")
+        p1_a2 = period2.get("Player 1", {}).get("action", "N/A")
+        p2_a2 = period2.get("Player 2", {}).get("action", "N/A")
+        payoff1 = payoff_matrix.get(p1_a1, {}).get(p2_a1, ("N/A","N/A")) if p1_a1!="N/A" and p2_a1!="N/A" else ("N/A","N/A")
+        payoff2 = payoff_matrix.get(p1_a2, {}).get(p2_a2, ("N/A","N/A")) if p1_a2!="N/A" and p2_a2!="N/A" else ("N/A","N/A")
+        table_data.append([
+            match_id, p1_name, p2_name,
+            f"P1:{p1_a1}, P2:{p2_a1}", str(payoff1),
+            f"P1:{p1_a2}, P2:{p2_a2}", str(payoff2)
+        ])
     
-    table = Table(table_data, colWidths=[1.5*inch, 1.5*inch, 1*inch, 1.5*inch, 1*inch])
+    col_widths = [1.2*inch, 1*inch, 1*inch, 1.2*inch, 0.8*inch, 1.2*inch, 0.8*inch]
+    table = Table(table_data, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 9),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+        ('FONTSIZE', (0,1), (-1,-1), 8),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
     ]))
     story.append(table)
     story.append(Spacer(1, 30))
     
-    # Charts
-    story.append(Paragraph("<b>Statistical Analysis</b>", styles['Heading2']))
-    p1_choices_r1, p2_choices_r1 = [], []
-    p1_choices_r2, p2_choices_r2 = [], []
-    for match in all_games.values():
-        if "period1" in match:
-            if match["period1"].get("Player 1", {}).get("action"): p1_choices_r1.append(match["period1"]["Player 1"]["action"])
-            if match["period1"].get("Player 2", {}).get("action"): p2_choices_r1.append(match["period1"]["Player 2"]["action"])
-        if "period2" in match:
-            if match["period2"].get("Player 1", {}).get("action"): p1_choices_r2.append(match["period2"]["Player 1"]["action"])
-            if match["period2"].get("Player 2", {}).get("action"): p2_choices_r2.append(match["period2"]["Player 2"]["action"])
+    # Statistical summary (percentages as text, no charts)
+    story.append(Paragraph("<b>Statistical Summary</b>", styles['Heading2']))
+    all_choices = {
+        "p1_r1": [], "p2_r1": [], "p1_r2": [], "p2_r2": []
+    }
+    for game in all_games.values():
+        if "period1" in game:
+            if "Player 1" in game["period1"]: all_choices["p1_r1"].append(game["period1"]["Player 1"]["action"])
+            if "Player 2" in game["period1"]: all_choices["p2_r1"].append(game["period1"]["Player 2"]["action"])
+        if "period2" in game:
+            if "Player 1" in game["period2"]: all_choices["p1_r2"].append(game["period2"]["Player 1"]["action"])
+            if "Player 2" in game["period2"]: all_choices["p2_r2"].append(game["period2"]["Player 2"]["action"])
     
-    temp_dir = tempfile.mkdtemp()
-    def create_chart(choices, labels, title, filename, colors_list):
-        if not choices: return None
-        counts = pd.Series(choices).value_counts(normalize=True).reindex(labels, fill_value=0) * 100
-        fig, ax = plt.subplots(figsize=(10, 6))
-        fig.patch.set_facecolor('#f0f0f0')
-        ax.set_facecolor('#e0e0e0')
-        bars = counts.plot(kind='bar', ax=ax, color=colors_list, linewidth=2, width=0.7)
-        ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
-        ax.set_ylabel("Percentage (%)", fontsize=14)
-        ax.set_xlabel("Choice", fontsize=14)
-        ax.tick_params(rotation=0, labelsize=12)
-        ax.set_ylim(0, 100)
-        ax.grid(True, alpha=0.3)
-        for bar in bars.patches:
-            height = bar.get_height()
-            ax.text(bar.get_x()+bar.get_width()/2., height+1, f'{height:.1f}%', ha='center', va='bottom', fontweight='bold')
-        ax.text(0.02, 0.98, f"Sample size: {len(choices)}", transform=ax.transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        plt.tight_layout()
-        filepath = os.path.join(temp_dir, filename)
-        plt.savefig(filepath, dpi=300)
-        plt.close()
-        return filepath
+    def add_pct(choices, labels, title):
+        if choices:
+            total = len(choices)
+            pcts = {c: choices.count(c)/total*100 for c in labels}
+            story.append(Paragraph(f"<b>{title}</b>", styles['Normal']))
+            story.append(Paragraph(f"Sample size: {total}", styles['Normal']))
+            for label in labels:
+                pct = pcts.get(label, 0)
+                story.append(Paragraph(f"{label}: {pct:.1f}%", styles['Normal']))
+            story.append(Spacer(1, 10))
+        else:
+            story.append(Paragraph(f"<b>{title}</b> – No data yet", styles['Normal']))
     
-    charts = []
-    if p1_choices_r1: charts.append(create_chart(p1_choices_r1, ["A","B"], "Player 1 Choices (Period 1)", "p1_r1.png", ['#1f77b4','#ff7f0e']))
-    if p2_choices_r1: charts.append(create_chart(p2_choices_r1, ["X","Y","Z"], "Player 2 Choices (Period 1)", "p2_r1.png", ['#1f77b4','#ff7f0e','#2ca02c']))
-    if p1_choices_r2: charts.append(create_chart(p1_choices_r2, ["A","B"], "Player 1 Choices (Period 2)", "p1_r2.png", ['#1f77b4','#ff7f0e']))
-    if p2_choices_r2: charts.append(create_chart(p2_choices_r2, ["X","Y","Z"], "Player 2 Choices (Period 2)", "p2_r2.png", ['#1f77b4','#ff7f0e','#2ca02c']))
-    
-    for chart_file in charts:
-        if chart_file:
-            story.append(Image(chart_file, width=6*inch, height=4*inch))
-            story.append(Spacer(1, 20))
-    
-    # Cleanup
-    for f in charts:
-        if f and os.path.exists(f): os.remove(f)
-    os.rmdir(temp_dir)
+    add_pct(all_choices["p1_r1"], ["A","B"], "Player 1 – Period 1")
+    add_pct(all_choices["p2_r1"], ["X","Y","Z"], "Player 2 – Period 1")
+    add_pct(all_choices["p1_r2"], ["A","B"], "Player 1 – Period 2")
+    add_pct(all_choices["p2_r2"], ["X","Y","Z"], "Player 2 – Period 2")
     
     # Payoff matrix reference
     story.append(Paragraph("<b>Payoff Matrix Reference</b>", styles['Heading2']))
@@ -189,7 +172,6 @@ def create_comprehensive_pdf():
     return buffer
 
 def export_game_csv():
-    """Export all match results to CSV string"""
     all_games = db.reference("games").get() or {}
     rows = []
     payoff_matrix = {
@@ -229,39 +211,59 @@ if admin_password == "admin123":
     all_games = db.reference("games").get() or {}
     expected_players = db.reference("expected_players").get() or 0
     
-    matched_players = set()
-    for match in all_matches.values():
-        matched_players.update(match.get("players", []))
-    completed_period2 = set()
-    for game in all_games.values():
-        if "period2" in game:
-            for p in game["period2"].keys():
-                completed_period2.add(p)
+    # Build player-partner mapping
+    player_partner = {}
+    player_match_ids = {}
+    for match_id, match_data in all_matches.items():
+        players = match_data.get("players", [])
+        if len(players) == 2:
+            player_partner[players[0]] = players[1]
+            player_partner[players[1]] = players[0]
+            player_match_ids[players[0]] = match_id
+            player_match_ids[players[1]] = match_id
+    
+    # Determine completed matches (both players finished period2)
+    completed_matches = set()
+    completed_players = set()
+    for match_id, game_data in all_games.items():
+        if "period2" in game_data and "Player 1" in game_data["period2"] and "Player 2" in game_data["period2"]:
+            completed_matches.add(match_id)
+            # Get player names from match record (if available)
+            if match_id in all_matches:
+                for p in all_matches[match_id].get("players", []):
+                    completed_players.add(p)
     
     col1, col2, col3, col4 = st.columns(4)
     with col1: st.metric("Expected Players", expected_players)
     with col2: st.metric("Registered Players", len(all_players))
-    with col3: st.metric("Matched Players", len(matched_players))
-    with col4: st.metric("Completed Period 2", len(completed_period2))
+    with col3: st.metric("Matched Players", len(player_partner))
+    with col4: st.metric("Completed Matches", len(completed_matches))
     
     if expected_players > 0:
-        progress = min(len(completed_period2) / expected_players, 1.0)
+        progress = min(len(completed_players) / expected_players, 1.0) if expected_players > 0 else 0
         st.progress(progress)
-        st.write(f"Progress: {len(completed_period2)}/{expected_players} players completed ({progress*100:.1f}%)")
+        st.write(f"Progress: {len(completed_players)}/{expected_players} players completed ({progress*100:.1f}%)")
     
     st.subheader("👥 Player Activity Monitor")
     if all_players:
         status_data = []
         for p in all_players.keys():
+            partner = player_partner.get(p, "Not yet matched")
+            match_id = player_match_ids.get(p, "")
             status = "🔴 Registered"
             activity = "Waiting for match"
-            if p in matched_players:
+            if partner != "Not yet matched":
                 status = "🟡 Matched"
-                activity = "Matched with partner"
-            if p in completed_period2:
+                activity = f"Matched with {partner}"
+            if p in completed_players:
                 status = "🟢 Completed"
-                activity = "Game finished"
-            status_data.append({"Player Name": p, "Status": status, "Activity": activity})
+                activity = f"Game finished (match {match_id})"
+            status_data.append({
+                "Player Name": p,
+                "Partner": partner,
+                "Status": status,
+                "Activity": activity
+            })
         st.dataframe(pd.DataFrame(status_data), use_container_width=True)
     
     st.subheader("⚙️ Game Management")
@@ -279,7 +281,6 @@ if admin_password == "admin123":
     st.subheader("🎲 Player Matching")
     if len(all_players) >= 2 and len(all_players) % 2 == 0:
         if st.button("👥 Assign Random Matches"):
-            # Clear existing matches
             db.reference("matches").delete()
             players_list = list(all_players.keys())
             random.shuffle(players_list)
@@ -328,7 +329,7 @@ if admin_password == "admin123":
         st.rerun()
     
     # Auto-refresh unless all completed
-    all_completed = expected_players > 0 and len(completed_period2) >= expected_players
+    all_completed = expected_players > 0 and len(completed_players) >= expected_players
     if all_completed:
         st.success("🎉 All participants completed! Admin monitoring complete.")
         if st.button("Manual Refresh"):
@@ -363,12 +364,11 @@ if name:
             break
     
     if not player_match:
-        # No match yet – wait
         st.info("⏳ Waiting for admin to assign matches... The game will start once all players are matched.")
         time.sleep(3)
         st.rerun()
     
-    # Now matched – gameplay
+    # Gameplay
     game_ref_period1 = db.reference(f"games/{player_match}/period1")
     period1_data = game_ref_period1.get()
     payoff_matrix = {
@@ -391,9 +391,8 @@ if name:
             payoff2 = payoff_matrix[p1a2][p2a2]
             st.success(f"Period 2 result: You ({role}) chose {'A' if role=='Player 1' else p2a2}, partner chose {'B' if role=='Player 1' else p1a2} → Payoffs {payoff2}")
             st.balloons()
-            # Reveal partner name only at the end
             partner_name = period1_data["Player 2"]["player"] if role == "Player 1" else period1_data["Player 1"]["player"]
-            st.success(f"✅ Game complete!**. Thank you for playing!")
+            st.success(f"✅ Game complete! You were paired with **{partner_name}**. Thank you for playing!")
             st.session_state["game_done"] = True
         else:
             existing = game_ref_period2.child(role).get()
@@ -428,38 +427,34 @@ if name:
                 st.success("Submitted! Waiting for partner.")
                 st.rerun()
     
-    # Show class results after game complete
+    # Show class results after game complete (only percentages, no charts)
     if st.session_state.get("game_done", False):
         st.header("📊 Class Results")
         all_games = db.reference("games").get() or {}
         p1_r1, p2_r1, p1_r2, p2_r2 = [], [], [], []
         for g in all_games.values():
             if "period1" in g:
-                if g["period1"].get("Player 1", {}).get("action"): p1_r1.append(g["period1"]["Player 1"]["action"])
-                if g["period1"].get("Player 2", {}).get("action"): p2_r1.append(g["period1"]["Player 2"]["action"])
+                if "Player 1" in g["period1"]: p1_r1.append(g["period1"]["Player 1"]["action"])
+                if "Player 2" in g["period1"]: p2_r1.append(g["period1"]["Player 2"]["action"])
             if "period2" in g:
-                if g["period2"].get("Player 1", {}).get("action"): p1_r2.append(g["period2"]["Player 1"]["action"])
-                if g["period2"].get("Player 2", {}).get("action"): p2_r2.append(g["period2"]["Player 2"]["action"])
+                if "Player 1" in g["period2"]: p1_r2.append(g["period2"]["Player 1"]["action"])
+                if "Player 2" in g["period2"]: p2_r2.append(g["period2"]["Player 2"]["action"])
         
-        def plot_pct(choices, labels, title):
+        def show_pct(choices, labels, title):
             if choices:
-                counts = pd.Series(choices).value_counts(normalize=True).reindex(labels, fill_value=0)*100
-                fig, ax = plt.subplots()
-                counts.plot(kind='bar', ax=ax, color=['#1f77b4','#ff7f0e','#2ca02c'][:len(labels)])
-                ax.set_ylim(0,100)
-                ax.set_title(title)
-                st.pyplot(fig)
+                total = len(choices)
+                st.subheader(title)
+                st.write(f"Sample size: {total}")
+                for label in labels:
+                    pct = choices.count(label) / total * 100
+                    st.metric(label, f"{pct:.1f}%")
             else:
                 st.info(f"No data for {title}")
         
-        st.subheader("Period 1 Choices")
-        col1, col2 = st.columns(2)
-        with col1: plot_pct(p1_r1, ["A","B"], "Player 1")
-        with col2: plot_pct(p2_r1, ["X","Y","Z"], "Player 2")
-        st.subheader("Period 2 Choices")
-        col3, col4 = st.columns(2)
-        with col3: plot_pct(p1_r2, ["A","B"], "Player 1")
-        with col4: plot_pct(p2_r2, ["X","Y","Z"], "Player 2")
+        show_pct(p1_r1, ["A","B"], "Period 1 – Player 1 Choices")
+        show_pct(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices")
+        show_pct(p1_r2, ["A","B"], "Period 2 – Player 1 Choices")
+        show_pct(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices")
         
         if st.button("🔄 Refresh Results"):
             st.rerun()
