@@ -206,8 +206,8 @@ def export_game_csv():
             payoff2 = payoff_matrix.get(p1_2, {}).get(p2_2, ("N/A","N/A")) if p1_2!="N/A" and p2_2!="N/A" else ("N/A","N/A")
             rows.append({
                 "Match ID": match_id,
-                "Player 1": game_data["period1"].get("Player 1", {}).get("player", "Unknown"),
-                "Player 2": game_data["period1"].get("Player 2", {}).get("player", "Unknown"),
+                "Player 1 Name": game_data.get("period1", {}).get("Player 1", {}).get("player", "Unknown"),
+                "Player 2 Name": game_data.get("period1", {}).get("Player 2", {}).get("player", "Unknown"),
                 "Period1_P1_Action": p1_1,
                 "Period1_P2_Action": p2_1,
                 "Period1_P1_Payoff": payoff1[0],
@@ -264,36 +264,6 @@ if admin_password == "admin123":
             status_data.append({"Player Name": p, "Status": status, "Activity": activity})
         st.dataframe(pd.DataFrame(status_data), use_container_width=True)
     
-    # Live Choice Analytics (same as before, but keep concise)
-    st.subheader("📈 Live Choice Analytics")
-    if all_games:
-        p1_r1, p2_r1, p1_r2, p2_r2 = [], [], [], []
-        for game in all_games.values():
-            if "period1" in game:
-                if game["period1"].get("Player 1", {}).get("action"): p1_r1.append(game["period1"]["Player 1"]["action"])
-                if game["period1"].get("Player 2", {}).get("action"): p2_r1.append(game["period1"]["Player 2"]["action"])
-            if "period2" in game:
-                if game["period2"].get("Player 1", {}).get("action"): p1_r2.append(game["period2"]["Player 1"]["action"])
-                if game["period2"].get("Player 2", {}).get("action"): p2_r2.append(game["period2"]["Player 2"]["action"])
-        
-        def quick_chart(choices, labels, title):
-            if choices:
-                counts = pd.Series(choices).value_counts(normalize=True).reindex(labels, fill_value=0)*100
-                fig, ax = plt.subplots()
-                counts.plot(kind='bar', ax=ax)
-                ax.set_ylim(0,100)
-                ax.set_title(title)
-                st.pyplot(fig)
-            else:
-                st.info(f"No data for {title}")
-        
-        col1, col2 = st.columns(2)
-        with col1: quick_chart(p1_r1, ["A","B"], "P1 Period 1")
-        with col2: quick_chart(p2_r1, ["X","Y","Z"], "P2 Period 1")
-        col3, col4 = st.columns(2)
-        with col3: quick_chart(p1_r2, ["A","B"], "P1 Period 2")
-        with col4: quick_chart(p2_r2, ["X","Y","Z"], "P2 Period 2")
-    
     st.subheader("⚙️ Game Management")
     current_expected = db.reference("expected_players").get() or 0
     new_expected = st.number_input("Set expected number of players (even):", min_value=0, max_value=100, value=current_expected, step=2)
@@ -304,6 +274,23 @@ if admin_password == "admin123":
             st.rerun()
         else:
             st.error("Must be even")
+    
+    # Admin controlled matching
+    st.subheader("🎲 Player Matching")
+    if len(all_players) >= 2 and len(all_players) % 2 == 0:
+        if st.button("👥 Assign Random Matches"):
+            # Clear existing matches
+            db.reference("matches").delete()
+            players_list = list(all_players.keys())
+            random.shuffle(players_list)
+            pairs = [players_list[i:i+2] for i in range(0, len(players_list), 2)]
+            for pair in pairs:
+                match_id = f"{pair[0]}_vs_{pair[1]}"
+                db.reference(f"matches/{match_id}").set({"players": pair})
+            st.success(f"Created {len(pairs)} matches.")
+            st.rerun()
+    else:
+        st.info(f"Need an even number of registered players (currently {len(all_players)}).")
     
     # CSV export button
     if st.button("📊 Export All Results to CSV"):
@@ -327,7 +314,6 @@ if admin_password == "admin123":
     
     # Restart game button – keeps matches but clears all period choices
     if st.button("🔄 Restart Game (keep same pairs, reset all progress)"):
-        # Delete all game data (period1 and period2 for all matches)
         db.reference("games").delete()
         st.success("✅ Game data cleared. Players can now replay from Period 1.")
         st.rerun()
@@ -365,10 +351,11 @@ if name:
     if not player_ref.get():
         player_ref.set({"joined": True, "timestamp": time.time()})
     
-    # Matching logic (unchanged, but ensure no duplicate matches)
+    # Wait for admin to assign matches
     matches_ref = db.reference("matches")
     all_matches = matches_ref.get() or {}
     player_match = None
+    role = None
     for mid, mdata in all_matches.items():
         if name in mdata.get("players", []):
             player_match = mid
@@ -376,101 +363,72 @@ if name:
             break
     
     if not player_match:
-        # Check if all expected players already completed (no new matches)
-        expected_players = db.reference("expected_players").get() or 0
-        all_games = db.reference("games").get() or {}
-        completed_count = 0
-        for g in all_games.values():
-            if "period1" in g and "period2" in g and "Player 1" in g["period1"] and "Player 2" in g["period1"] and "Player 1" in g["period2"] and "Player 2" in g["period2"]:
-                completed_count += 2
-        if expected_players > 0 and completed_count >= expected_players:
-            st.info("🎯 All games have been completed! No more matches are available. Check the summary below.")
-            # Still show results if any
-        else:
-            players_data = db.reference("players").get() or {}
-            unmatched = [p for p in players_data.keys() if p != name and not any(p in m.get("players", []) for m in all_matches.values())]
-            if unmatched:
-                partner = unmatched[0]
-                pair = sorted([name, partner])
-                match_id = f"{pair[0]}_vs_{pair[1]}"
-                if not matches_ref.child(match_id).get():
-                    matches_ref.child(match_id).set({"players": pair})
-                role = "Player 1" if pair[0] == name else "Player 2"
-                player_match = match_id
-                st.success(f"🎮 You are {role} in match {match_id}")
-            else:
-                st.info("⏳ Waiting for another player to join...")
-                # Wait for match (simple polling)
-                for _ in range(15):
-                    time.sleep(2)
-                    all_matches = matches_ref.get() or {}
-                    for mid, mdata in all_matches.items():
-                        if name in mdata.get("players", []):
-                            player_match = mid
-                            role = "Player 1" if mdata["players"][0] == name else "Player 2"
-                            st.rerun()
-                    break
+        # No match yet – wait
+        st.info("⏳ Waiting for admin to assign matches... The game will start once all players are matched.")
+        time.sleep(3)
+        st.rerun()
     
-    if player_match:
-        # Gameplay period 1
-        game_ref_period1 = db.reference(f"games/{player_match}/period1")
-        period1_data = game_ref_period1.get()
-        payoff_matrix = {
-            "A": {"X": (4, 3), "Y": (0, 0), "Z": (1, 4)},
-            "B": {"X": (0, 0), "Y": (2, 1), "Z": (0, 0)}
-        }
-        
-        if period1_data and "Player 1" in period1_data and "Player 2" in period1_data:
-            # Period 1 already complete
-            p1a = period1_data["Player 1"]["action"]
-            p2a = period1_data["Player 2"]["action"]
-            payoff1 = payoff_matrix[p1a][p2a]
-            st.success(f"Period 1 result: P1:{p1a}, P2:{p2a} → Payoffs {payoff1}")
-            st.subheader("🔁 Period 2")
-            game_ref_period2 = db.reference(f"games/{player_match}/period2")
-            period2_data = game_ref_period2.get()
-            if period2_data and "Player 1" in period2_data and "Player 2" in period2_data:
-                p1a2 = period2_data["Player 1"]["action"]
-                p2a2 = period2_data["Player 2"]["action"]
-                payoff2 = payoff_matrix[p1a2][p2a2]
-                st.success(f"Period 2 result: P1:{p1a2}, P2:{p2a2} → Payoffs {payoff2}")
-                st.balloons()
-                st.success("✅ Game complete! Thank you.")
-                st.session_state["game_done"] = True
-            else:
-                # Submit period 2
-                existing = game_ref_period2.child(role).get()
-                if existing:
-                    st.info("Waiting for the other player...")
-                    time.sleep(2)
-                    st.rerun()
-                else:
-                    if role == "Player 1":
-                        choice = st.radio("Your Period 2 action:", ["A", "B"])
-                    else:
-                        choice = st.radio("Your Period 2 action:", ["X", "Y", "Z"])
-                    if st.button("Submit Period 2"):
-                        game_ref_period2.child(role).set({"action": choice, "timestamp": time.time(), "player": name})
-                        st.success("Submitted! Waiting for partner.")
-                        st.rerun()
+    # Now matched – gameplay
+    game_ref_period1 = db.reference(f"games/{player_match}/period1")
+    period1_data = game_ref_period1.get()
+    payoff_matrix = {
+        "A": {"X": (4, 3), "Y": (0, 0), "Z": (1, 4)},
+        "B": {"X": (0, 0), "Y": (2, 1), "Z": (0, 0)}
+    }
+    
+    if period1_data and "Player 1" in period1_data and "Player 2" in period1_data:
+        # Period 1 complete
+        p1a = period1_data["Player 1"]["action"]
+        p2a = period1_data["Player 2"]["action"]
+        payoff1 = payoff_matrix[p1a][p2a]
+        st.success(f"Period 1 result: You ({role}) chose {'A' if role=='Player 1' else p2a}, partner chose {'B' if role=='Player 1' else p1a} → Payoffs {payoff1}")
+        st.subheader("🔁 Period 2")
+        game_ref_period2 = db.reference(f"games/{player_match}/period2")
+        period2_data = game_ref_period2.get()
+        if period2_data and "Player 1" in period2_data and "Player 2" in period2_data:
+            p1a2 = period2_data["Player 1"]["action"]
+            p2a2 = period2_data["Player 2"]["action"]
+            payoff2 = payoff_matrix[p1a2][p2a2]
+            st.success(f"Period 2 result: You ({role}) chose {'A' if role=='Player 1' else p2a2}, partner chose {'B' if role=='Player 1' else p1a2} → Payoffs {payoff2}")
+            st.balloons()
+            # Reveal partner name only at the end
+            partner_name = period1_data["Player 2"]["player"] if role == "Player 1" else period1_data["Player 1"]["player"]
+            st.success(f"✅ Game complete! You were paired with **{partner_name}**. Thank you for playing!")
+            st.session_state["game_done"] = True
         else:
-            # Submit period 1
-            existing = game_ref_period1.child(role).get()
+            existing = game_ref_period2.child(role).get()
             if existing:
-                st.info("Waiting for the other player to finish Period 1...")
+                st.info("Waiting for the other player to submit Period 2...")
                 time.sleep(2)
                 st.rerun()
             else:
                 if role == "Player 1":
-                    choice = st.radio("Your Period 1 action:", ["A", "B"])
+                    choice = st.radio("Your Period 2 action:", ["A", "B"])
                 else:
-                    choice = st.radio("Your Period 1 action:", ["X", "Y", "Z"])
-                if st.button("Submit Period 1"):
-                    game_ref_period1.child(role).set({"action": choice, "timestamp": time.time(), "player": name})
+                    choice = st.radio("Your Period 2 action:", ["X", "Y", "Z"])
+                if st.button("Submit Period 2"):
+                    game_ref_period2.child(role).set({"action": choice, "timestamp": time.time(), "player": name})
                     st.success("Submitted! Waiting for partner.")
                     st.rerun()
+    else:
+        # Period 1 not yet complete
+        existing = game_ref_period1.child(role).get()
+        if existing:
+            st.info("Waiting for the other player to finish Period 1...")
+            time.sleep(2)
+            st.rerun()
+        else:
+            st.subheader("🎮 Period 1: Make Your Choice")
+            if role == "Player 1":
+                choice = st.radio("Your action:", ["A", "B"])
+            else:
+                choice = st.radio("Your action:", ["X", "Y", "Z"])
+            if st.button("Submit Period 1"):
+                game_ref_period1.child(role).set({"action": choice, "timestamp": time.time(), "player": name})
+                st.success("Submitted! Waiting for partner.")
+                st.rerun()
     
-    # After game complete, show summary if any matches exist
+    # Show class results after game complete
     if st.session_state.get("game_done", False):
         st.header("📊 Class Results")
         all_games = db.reference("games").get() or {}
