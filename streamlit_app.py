@@ -440,33 +440,43 @@ if name:
                     if "Player 1" in g["period2"]: p1_r2.append(g["period2"]["Player 1"]["action"])
                     if "Player 2" in g["period2"]: p2_r2.append(g["period2"]["Player 2"]["action"])
             
-            # Styled display function
-            def show_styled_choices(choices, labels, title, player_color):
+            def show_styled_choices(choices, labels, title, bg_color, text_color):
                 if choices:
                     total = len(choices)
-                    st.markdown(f"<h4 style='color:{player_color};'>{title}</h4>", unsafe_allow_html=True)
-                    st.write(f"**Sample size:** {total}")
+                    st.markdown(
+                        f"""
+                        <div style="background-color:{bg_color}; border-radius:15px; padding:15px; margin-bottom:20px;">
+                            <h4 style="color:{text_color}; margin:0 0 10px 0;">{title}</h4>
+                            <p style="margin:0 0 15px 0; color:#333;"><strong>Sample size:</strong> {total}</p>
+                            <div style="display: flex; gap: 15px; justify-content: space-around;">
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    # Create columns inside the div using Streamlit columns
                     cols = st.columns(len(labels))
                     for i, label in enumerate(labels):
                         pct = choices.count(label) / total * 100
-                        # Create a card-like display with colored option letter
                         cols[i].markdown(
                             f"""
-                            <div style="background-color:#f0f2f6; border-radius:10px; padding:15px; text-align:center;">
-                                <span style="font-size:28px; font-weight:bold; color:{player_color};">{label}</span><br>
-                                <span style="font-size:36px; font-weight:bold;">{pct:.1f}%</span>
+                            <div style="background-color:#ffffff; border-radius:10px; padding:15px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <span style="font-size:28px; font-weight:bold; color:{text_color};">{label}</span><br>
+                                <span style="font-size:36px; font-weight:bold; color:#333333;">{pct:.1f}%</span>
                             </div>
                             """,
                             unsafe_allow_html=True
                         )
+                    st.markdown("</div></div>", unsafe_allow_html=True)
                 else:
                     st.info(f"No data for {title}")
             
-            # Player 1 uses a different color (e.g., #1f77b4) and Player 2 uses #ff7f0e
-            show_styled_choices(p1_r1, ["A","B"], "Period 1 – Player 1 Choices", "#1f77b4")
-            show_styled_choices(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices", "#ff7f0e")
-            show_styled_choices(p1_r2, ["A","B"], "Period 2 – Player 1 Choices", "#1f77b4")
-            show_styled_choices(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices", "#ff7f0e")
+            # Player 1: light orange background, dark orange text
+            show_styled_choices(p1_r1, ["A","B"], "Period 1 – Player 1 Choices", "#FFF3E0", "#E67E22")
+            # Player 2: light blue background, dark blue text
+            show_styled_choices(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices", "#E3F2FD", "#1976D2")
+            # Player 1 Period 2
+            show_styled_choices(p1_r2, ["A","B"], "Period 2 – Player 1 Choices", "#FFF3E0", "#E67E22")
+            # Player 2 Period 2
+            show_styled_choices(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices", "#E3F2FD", "#1976D2")
             
             if st.button("🔄 Refresh Results"):
                 st.rerun()
