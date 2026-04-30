@@ -429,7 +429,7 @@ if name:
     # Show class results after game complete (only if there is any game data)
     if st.session_state.get("game_done", False):
         all_games = db.reference("games").get() or {}
-        if all_games:  # Only show if there is data
+        if all_games:
             st.header("📊 Class Results")
             p1_r1, p2_r1, p1_r2, p2_r2 = [], [], [], []
             for g in all_games.values():
@@ -440,22 +440,33 @@ if name:
                     if "Player 1" in g["period2"]: p1_r2.append(g["period2"]["Player 1"]["action"])
                     if "Player 2" in g["period2"]: p2_r2.append(g["period2"]["Player 2"]["action"])
             
-            def show_pct_horizontal(choices, labels, title):
+            # Styled display function
+            def show_styled_choices(choices, labels, title, player_color):
                 if choices:
                     total = len(choices)
-                    st.subheader(title)
-                    st.write(f"Sample size: {total}")
+                    st.markdown(f"<h4 style='color:{player_color};'>{title}</h4>", unsafe_allow_html=True)
+                    st.write(f"**Sample size:** {total}")
                     cols = st.columns(len(labels))
                     for i, label in enumerate(labels):
                         pct = choices.count(label) / total * 100
-                        cols[i].metric(label, f"{pct:.1f}%")
+                        # Create a card-like display with colored option letter
+                        cols[i].markdown(
+                            f"""
+                            <div style="background-color:#f0f2f6; border-radius:10px; padding:15px; text-align:center;">
+                                <span style="font-size:28px; font-weight:bold; color:{player_color};">{label}</span><br>
+                                <span style="font-size:36px; font-weight:bold;">{pct:.1f}%</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
                 else:
                     st.info(f"No data for {title}")
             
-            show_pct_horizontal(p1_r1, ["A","B"], "Period 1 – Player 1 Choices")
-            show_pct_horizontal(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices")
-            show_pct_horizontal(p1_r2, ["A","B"], "Period 2 – Player 1 Choices")
-            show_pct_horizontal(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices")
+            # Player 1 uses a different color (e.g., #1f77b4) and Player 2 uses #ff7f0e
+            show_styled_choices(p1_r1, ["A","B"], "Period 1 – Player 1 Choices", "#1f77b4")
+            show_styled_choices(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices", "#ff7f0e")
+            show_styled_choices(p1_r2, ["A","B"], "Period 2 – Player 1 Choices", "#1f77b4")
+            show_styled_choices(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices", "#ff7f0e")
             
             if st.button("🔄 Refresh Results"):
                 st.rerun()
