@@ -392,7 +392,6 @@ if name:
             st.balloons()
             partner_name = period1_data["Player 2"]["player"] if role == "Player 1" else period1_data["Player 1"]["player"]
             st.success(f"✅ Game complete! You were paired with **{partner_name}**. Thank you for playing!")
-            st.session_state["game_done"] = True
         else:
             existing = game_ref_period2.child(role).get()
             if existing:
@@ -426,57 +425,61 @@ if name:
                 st.success("Submitted! Waiting for partner.")
                 st.rerun()
     
-    # Show class results after game complete (only if there is any game data)
-    if st.session_state.get("game_done", False):
-        all_games = db.reference("games").get() or {}
-        if all_games:
-            st.header("📊 Class Results")
-            p1_r1, p2_r1, p1_r2, p2_r2 = [], [], [], []
-            for g in all_games.values():
-                if "period1" in g:
-                    if "Player 1" in g["period1"]: p1_r1.append(g["period1"]["Player 1"]["action"])
-                    if "Player 2" in g["period1"]: p2_r1.append(g["period1"]["Player 2"]["action"])
-                if "period2" in g:
-                    if "Player 1" in g["period2"]: p1_r2.append(g["period2"]["Player 1"]["action"])
-                    if "Player 2" in g["period2"]: p2_r2.append(g["period2"]["Player 2"]["action"])
-            
-            def show_styled_choices(choices, labels, title, bg_color, text_color):
-                if choices:
-                    total = len(choices)
-                    st.markdown(
+    # --- Global class results: show only after ALL players have completed ---
+    all_games = db.reference("games").get() or {}
+    all_matches_check = db.reference("matches").get() or {}
+    completed_players = set()
+    for match_id, game_data in all_games.items():
+        if "period2" in game_data and "Player 1" in game_data["period2"] and "Player 2" in game_data["period2"]:
+            if match_id in all_matches_check:
+                for p in all_matches_check[match_id].get("players", []):
+                    completed_players.add(p)
+    expected_players = db.reference("expected_players").get() or 0
+    all_completed = expected_players > 0 and len(completed_players) >= expected_players
+    
+    if all_completed:
+        st.header("📊 Class Results")
+        p1_r1, p2_r1, p1_r2, p2_r2 = [], [], [], []
+        for g in all_games.values():
+            if "period1" in g:
+                if "Player 1" in g["period1"]: p1_r1.append(g["period1"]["Player 1"]["action"])
+                if "Player 2" in g["period1"]: p2_r1.append(g["period1"]["Player 2"]["action"])
+            if "period2" in g:
+                if "Player 1" in g["period2"]: p1_r2.append(g["period2"]["Player 1"]["action"])
+                if "Player 2" in g["period2"]: p2_r2.append(g["period2"]["Player 2"]["action"])
+        
+        def show_styled_choices(choices, labels, title, bg_color, text_color):
+            if choices:
+                total = len(choices)
+                st.markdown(
+                    f"""
+                    <div style="background-color:{bg_color}; border-radius:15px; padding:15px; margin-bottom:20px;">
+                        <h4 style="color:{text_color}; margin:0 0 10px 0;">{title}</h4>
+                        <p style="margin:0 0 15px 0; color:#333;"><strong>Sample size:</strong> {total}</p>
+                        <div style="display: flex; gap: 15px; justify-content: space-around;">
+                    """,
+                    unsafe_allow_html=True
+                )
+                cols = st.columns(len(labels))
+                for i, label in enumerate(labels):
+                    pct = choices.count(label) / total * 100
+                    cols[i].markdown(
                         f"""
-                        <div style="background-color:{bg_color}; border-radius:15px; padding:15px; margin-bottom:20px;">
-                            <h4 style="color:{text_color}; margin:0 0 10px 0;">{title}</h4>
-                            <p style="margin:0 0 15px 0; color:#333;"><strong>Sample size:</strong> {total}</p>
-                            <div style="display: flex; gap: 15px; justify-content: space-around;">
+                        <div style="background-color:#ffffff; border-radius:10px; padding:15px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <span style="font-size:28px; font-weight:bold; color:{text_color};">{label}</span><br>
+                            <span style="font-size:36px; font-weight:bold; color:#333333;">{pct:.1f}%</span>
+                        </div>
                         """,
                         unsafe_allow_html=True
                     )
-                    # Create columns inside the div using Streamlit columns
-                    cols = st.columns(len(labels))
-                    for i, label in enumerate(labels):
-                        pct = choices.count(label) / total * 100
-                        cols[i].markdown(
-                            f"""
-                            <div style="background-color:#ffffff; border-radius:10px; padding:15px; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                <span style="font-size:28px; font-weight:bold; color:{text_color};">{label}</span><br>
-                                <span style="font-size:36px; font-weight:bold; color:#333333;">{pct:.1f}%</span>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-                    st.markdown("</div></div>", unsafe_allow_html=True)
-                else:
-                    st.info(f"No data for {title}")
-            
-            # Player 1: light orange background, dark orange text
-            show_styled_choices(p1_r1, ["A","B"], "Period 1 – Player 1 Choices", "#FFF3E0", "#E67E22")
-            # Player 2: light blue background, dark blue text
-            show_styled_choices(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices", "#E3F2FD", "#1976D2")
-            # Player 1 Period 2
-            show_styled_choices(p1_r2, ["A","B"], "Period 2 – Player 1 Choices", "#FFF3E0", "#E67E22")
-            # Player 2 Period 2
-            show_styled_choices(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices", "#E3F2FD", "#1976D2")
-            
-            if st.button("🔄 Refresh Results"):
-                st.rerun()
+                st.markdown("</div></div>", unsafe_allow_html=True)
+            else:
+                st.info(f"No data for {title}")
+        
+        show_styled_choices(p1_r1, ["A","B"], "Period 1 – Player 1 Choices", "#FFF3E0", "#E67E22")
+        show_styled_choices(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices", "#E3F2FD", "#1976D2")
+        show_styled_choices(p1_r2, ["A","B"], "Period 2 – Player 1 Choices", "#FFF3E0", "#E67E22")
+        show_styled_choices(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices", "#E3F2FD", "#1976D2")
+        
+        if st.button("🔄 Refresh Results"):
+            st.rerun()
