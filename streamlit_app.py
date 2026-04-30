@@ -117,7 +117,7 @@ def create_comprehensive_pdf():
     story.append(table)
     story.append(Spacer(1, 30))
     
-    # Statistical summary (percentages as text, no charts)
+    # Statistical summary (percentages as text)
     story.append(Paragraph("<b>Statistical Summary</b>", styles['Heading2']))
     all_choices = {
         "p1_r1": [], "p2_r1": [], "p1_r2": [], "p2_r2": []
@@ -228,7 +228,6 @@ if admin_password == "admin123":
     for match_id, game_data in all_games.items():
         if "period2" in game_data and "Player 1" in game_data["period2"] and "Player 2" in game_data["period2"]:
             completed_matches.add(match_id)
-            # Get player names from match record (if available)
             if match_id in all_matches:
                 for p in all_matches[match_id].get("players", []):
                     completed_players.add(p)
@@ -427,34 +426,36 @@ if name:
                 st.success("Submitted! Waiting for partner.")
                 st.rerun()
     
-    # Show class results after game complete (only percentages, no charts)
+    # Show class results after game complete (only if there is any game data)
     if st.session_state.get("game_done", False):
-        st.header("📊 Class Results")
         all_games = db.reference("games").get() or {}
-        p1_r1, p2_r1, p1_r2, p2_r2 = [], [], [], []
-        for g in all_games.values():
-            if "period1" in g:
-                if "Player 1" in g["period1"]: p1_r1.append(g["period1"]["Player 1"]["action"])
-                if "Player 2" in g["period1"]: p2_r1.append(g["period1"]["Player 2"]["action"])
-            if "period2" in g:
-                if "Player 1" in g["period2"]: p1_r2.append(g["period2"]["Player 1"]["action"])
-                if "Player 2" in g["period2"]: p2_r2.append(g["period2"]["Player 2"]["action"])
-        
-        def show_pct(choices, labels, title):
-            if choices:
-                total = len(choices)
-                st.subheader(title)
-                st.write(f"Sample size: {total}")
-                for label in labels:
-                    pct = choices.count(label) / total * 100
-                    st.metric(label, f"{pct:.1f}%")
-            else:
-                st.info(f"No data for {title}")
-        
-        show_pct(p1_r1, ["A","B"], "Period 1 – Player 1 Choices")
-        show_pct(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices")
-        show_pct(p1_r2, ["A","B"], "Period 2 – Player 1 Choices")
-        show_pct(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices")
-        
-        if st.button("🔄 Refresh Results"):
-            st.rerun()
+        if all_games:  # Only show if there is data
+            st.header("📊 Class Results")
+            p1_r1, p2_r1, p1_r2, p2_r2 = [], [], [], []
+            for g in all_games.values():
+                if "period1" in g:
+                    if "Player 1" in g["period1"]: p1_r1.append(g["period1"]["Player 1"]["action"])
+                    if "Player 2" in g["period1"]: p2_r1.append(g["period1"]["Player 2"]["action"])
+                if "period2" in g:
+                    if "Player 1" in g["period2"]: p1_r2.append(g["period2"]["Player 1"]["action"])
+                    if "Player 2" in g["period2"]: p2_r2.append(g["period2"]["Player 2"]["action"])
+            
+            def show_pct_horizontal(choices, labels, title):
+                if choices:
+                    total = len(choices)
+                    st.subheader(title)
+                    st.write(f"Sample size: {total}")
+                    cols = st.columns(len(labels))
+                    for i, label in enumerate(labels):
+                        pct = choices.count(label) / total * 100
+                        cols[i].metric(label, f"{pct:.1f}%")
+                else:
+                    st.info(f"No data for {title}")
+            
+            show_pct_horizontal(p1_r1, ["A","B"], "Period 1 – Player 1 Choices")
+            show_pct_horizontal(p2_r1, ["X","Y","Z"], "Period 1 – Player 2 Choices")
+            show_pct_horizontal(p1_r2, ["A","B"], "Period 2 – Player 1 Choices")
+            show_pct_horizontal(p2_r2, ["X","Y","Z"], "Period 2 – Player 2 Choices")
+            
+            if st.button("🔄 Refresh Results"):
+                st.rerun()
